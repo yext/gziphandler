@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -60,13 +61,34 @@ func addLevelPool(level int) {
 	}
 }
 
+// Writer provides the io.WriteCloser interface with an additional Flush() function
+// required for gzip content
+type Writer interface {
+	io.WriteCloser
+	Flush() error
+}
+
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't close the
 // writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
 	index int // Index for gzipWriterPools.
-	gw    *gzip.Writer
+	gw    Writer
+}
+
+// NoCompressionWriter provides a Writer interface that exposes an http.ResponseWriter
+// without performing any compression.
+type NoCompressionWriter struct {
+	http.ResponseWriter
+}
+
+func (w *NoCompressionWriter) Close() error {
+	return nil
+}
+
+func (w *NoCompressionWriter) Flush() error {
+	return nil
 }
 
 // Write appends data to the gzip writer.
@@ -97,9 +119,19 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
 // content encoding header.
 func (w *GzipResponseWriter) init() {
+
+	index := w.index
+
+	if w.ResponseWriter.Header().Get(contentEncoding) == "gzip" {
+		w.gw = &NoCompressionWriter{
+			ResponseWriter: w.ResponseWriter,
+		}
+		return
+	}
+
 	// Bytes written during ServeHTTP are redirected to this gzip writer
 	// before being written to the underlying response.
-	gzw := gzipWriterPools[w.index].Get().(*gzip.Writer)
+	gzw := gzipWriterPools[index].Get().(*gzip.Writer)
 	gzw.Reset(w.ResponseWriter)
 	w.gw = gzw
 	w.ResponseWriter.Header().Set(contentEncoding, "gzip")

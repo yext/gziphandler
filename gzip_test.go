@@ -79,6 +79,30 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
 }
 
+func TestDoubleGzipHandler(t *testing.T) {
+	testBody := "aaabbbccc"
+
+	// Wrap one GzipHandler with another to ensure we don't double-gzip content
+	handler := GzipHandler(
+		GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			io.WriteString(w, testBody)
+		})),
+	)
+
+	// requests with accept-encoding:gzip are compressed exactly once
+
+	req2, _ := http.NewRequest("GET", "/whatever", nil)
+	req2.Header.Set("Accept-Encoding", "gzip")
+	resp2 := httptest.NewRecorder()
+	handler.ServeHTTP(resp2, req2)
+	res2 := resp2.Result()
+
+	assert.Equal(t, 200, res2.StatusCode)
+	assert.Equal(t, "gzip", res2.Header.Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res2.Header.Get("Vary"))
+	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp2.Body.Bytes())
+}
+
 func TestNewGzipLevelHandler(t *testing.T) {
 	testBody := "aaabbbccc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
