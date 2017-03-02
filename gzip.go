@@ -148,7 +148,9 @@ func (w *GzipResponseWriter) Close() error {
 	}
 
 	err := w.gw.Close()
-	gzipWriterPools[w.index].Put(w.gw)
+	if _, ok := w.gw.(*NoCompressionWriter); !ok {
+		gzipWriterPools[w.index].Put(w.gw)
+	}
 	return err
 }
 
