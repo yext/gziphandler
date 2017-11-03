@@ -18,6 +18,7 @@ const (
 	contentEncoding = "Content-Encoding"
 	contentType     = "Content-Type"
 	contentLength   = "Content-Length"
+	etag            = "ETag"
 )
 
 type codings map[string]float64
@@ -139,6 +140,12 @@ func (w *GzipResponseWriter) init() {
 	// will fail to set the Content-Length header since its already set
 	// See: https://github.com/golang/go/issues/14975
 	w.ResponseWriter.Header().Del(contentLength)
+
+	// Suffix ETag header with -gzip for compressed responses
+	originalEtag := w.ResponseWriter.Header().Get(etag)
+	if originalEtag != "" && !strings.HasSuffix(originalEtag, "-gzip") {
+		w.ResponseWriter.Header().Set(etag, fmt.Sprintf("%s-gzip", originalEtag))
+	}
 }
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
