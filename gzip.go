@@ -19,6 +19,9 @@ const (
 	contentType     = "Content-Type"
 	contentLength   = "Content-Length"
 	etag            = "ETag"
+	cacheControl    = "Cache-Control"
+	pragma          = "Pragma"
+	expires         = "Expires"
 )
 
 type codings map[string]float64
@@ -90,6 +93,21 @@ func (w *NoCompressionWriter) Close() error {
 
 func (w *NoCompressionWriter) Flush() error {
 	return nil
+}
+
+func (w *NoCompressionWriter) WriteHeader(code int) {
+	// don't cache uncompressed responses
+	if w.Header().Get(cacheControl) == "" {
+		w.Header().Set(cacheControl, "no-cache, no-store, must-revalidate")
+	}
+	if w.Header().Get(pragma) == "" {
+		w.Header().Set(pragma, "no-cache")
+	}
+	if w.Header().Get(expires) == "" {
+		w.Header().Set(expires, "0")
+	}
+
+	w.ResponseWriter.WriteHeader(code)
 }
 
 // Write appends data to the gzip writer.
@@ -221,7 +239,11 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 
 				h.ServeHTTP(gw, r)
 			} else {
-				h.ServeHTTP(w, r)
+				noCache := &NoCompressionWriter{
+					ResponseWriter: w,
+				}
+
+				h.ServeHTTP(noCache, r)
 			}
 		})
 	}, nil
