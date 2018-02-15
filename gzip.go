@@ -81,7 +81,7 @@ type GzipResponseWriter struct {
 	minSize int    // Specifed the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
 	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 
-	contentTypes []string // Only compress if the response is one of these content-types. All are accepted if empty.
+	contentTypesBlacklist []string // Don't compress if the response is one of these content-types.
 }
 
 type GzipResponseWriterWithCloseNotify struct {
@@ -113,7 +113,7 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	// If the global writes are bigger than the minSize and we're about to write
 	// a response containing a content type we want to handle, enable
 	// compression.
-	if len(w.buf) >= w.minSize && handleContentType(w.contentTypes, w) && w.Header().Get(contentEncoding) == "" {
+	if len(w.buf) >= w.minSize && handleContentType(w.contentTypesBlacklist, w) && w.Header().Get(contentEncoding) == "" {
 		err := w.startGzip()
 		if err != nil {
 			return 0, err
@@ -272,12 +272,12 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
-			if acceptsGzip(r) {
+			if AcceptsGzip(r) {
 				gw := &GzipResponseWriter{
-					ResponseWriter: w,
-					index:          index,
-					minSize:        c.minSize,
-					contentTypes:   c.contentTypes,
+					ResponseWriter:        w,
+					index:                 index,
+					minSize:               c.minSize,
+					contentTypesBlacklist: c.contentTypesBlacklist,
 				}
 				defer gw.Close()
 
@@ -297,9 +297,9 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 
 // Used for functional configuration.
 type config struct {
-	minSize      int
-	level        int
-	contentTypes []string
+	minSize               int
+	level                 int
+	contentTypesBlacklist []string
 }
 
 func (c *config) validate() error {
@@ -328,11 +328,13 @@ func CompressionLevel(level int) option {
 	}
 }
 
-func ContentTypes(types []string) option {
+// ContentTypesBlacklist creates an option which doesn't compress certain
+// content types regardless of a user accepting gzip compression.
+func ContentTypesBlacklist(types []string) option {
 	return func(c *config) {
-		c.contentTypes = []string{}
+		c.contentTypesBlacklist = []string{}
 		for _, v := range types {
-			c.contentTypes = append(c.contentTypes, strings.ToLower(v))
+			c.contentTypesBlacklist = append(c.contentTypesBlacklist, strings.ToLower(v))
 		}
 	}
 }
@@ -345,28 +347,22 @@ func GzipHandler(h http.Handler) http.Handler {
 	return wrapper(h)
 }
 
-// acceptsGzip returns true if the given HTTP request indicates that it will
+// AcceptsGzip returns true if the given HTTP request indicates that it will
 // accept a gzipped response.
-func acceptsGzip(r *http.Request) bool {
+func AcceptsGzip(r *http.Request) bool {
 	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
 	return acceptedEncodings["gzip"] > 0.0
 }
 
 // returns true if we've been configured to compress the specific content type.
-func handleContentType(contentTypes []string, w http.ResponseWriter) bool {
-	// If contentTypes is empty we handle all content types.
-	if len(contentTypes) == 0 {
-		return true
-	}
-
+func handleContentType(contentTypesBlacklist []string, w http.ResponseWriter) bool {
 	ct := strings.ToLower(w.Header().Get(contentType))
-	for _, c := range contentTypes {
+	for _, c := range contentTypesBlacklist {
 		if c == ct {
-			return true
+			return false
 		}
 	}
-
-	return false
+	return true
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might

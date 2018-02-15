@@ -327,7 +327,7 @@ func TestFlushBeforeWrite(t *testing.T) {
 func TestImplementCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.True(t, ok, "response writer must implement http.CloseNotifier")
 	})).ServeHTTP(&mockRWCloseNotify{}, request)
@@ -336,7 +336,7 @@ func TestImplementCloseNotifier(t *testing.T) {
 func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, okCloseNotifier := rw.(http.CloseNotifier)
 		assert.True(t, okCloseNotifier, "response writer must implement http.CloseNotifier")
 		_, okFlusher := rw.(http.Flusher)
@@ -347,12 +347,11 @@ func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 func TestNotImplementCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.False(t, ok, "response writer must not implement http.CloseNotifier")
 	})).ServeHTTP(httptest.NewRecorder(), request)
 }
-
 
 type mockRWCloseNotify struct{}
 
@@ -371,7 +370,6 @@ func (m *mockRWCloseNotify) Write([]byte) (int, error) {
 func (m *mockRWCloseNotify) WriteHeader(int) {
 	panic("implement me")
 }
-
 
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -414,34 +412,34 @@ func TestDontWriteWhenNotWrittenTo(t *testing.T) {
 }
 
 var contentTypeTests = []struct {
-	name                 string
-	contentType          string
-	acceptedContentTypes []string
-	expectedGzip         bool
+	name                  string
+	contentType           string
+	blacklistContentTypes []string
+	expectedGzip          bool
 }{
 	{
-		name:                 "Always gzip when content types are empty",
-		contentType:          "",
-		acceptedContentTypes: []string{},
-		expectedGzip:         true,
+		name:                  "Always gzip when content types are empty",
+		contentType:           "",
+		blacklistContentTypes: []string{},
+		expectedGzip:          true,
 	},
 	{
-		name:                 "Exact content-type match",
-		contentType:          "application/json",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         true,
+		name:                  "Exact content-type match",
+		contentType:           "application/json",
+		blacklistContentTypes: []string{"application/json"},
+		expectedGzip:          false,
 	},
 	{
-		name:                 "Case insensitive content-type matching",
-		contentType:          "Application/Json",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         true,
+		name:                  "Case insensitive content-type matching",
+		contentType:           "Application/Json",
+		blacklistContentTypes: []string{"application/json"},
+		expectedGzip:          false,
 	},
 	{
-		name:                 "Non-matching content-type",
-		contentType:          "text/xml",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         false,
+		name:                  "Non-matching content-type",
+		contentType:           "text/xml",
+		blacklistContentTypes: []string{"application/json"},
+		expectedGzip:          true,
 	},
 }
 
@@ -453,7 +451,7 @@ func TestContentTypes(t *testing.T) {
 			io.WriteString(w, testBody)
 		})
 
-		wrapper, err := GzipHandlerWithOpts(ContentTypes(tt.acceptedContentTypes))
+		wrapper, err := GzipHandlerWithOpts(ContentTypesBlacklist(tt.blacklistContentTypes))
 		if !assert.Nil(t, err, "NewGzipHandlerWithOpts returned error", tt.name) {
 			continue
 		}
